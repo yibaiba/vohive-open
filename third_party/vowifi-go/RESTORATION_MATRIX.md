@@ -20,3 +20,20 @@ binary. A module advances only when every listed symbol is `exact` or
 The original release path clears the lease metadata; it does not scrub the
 underlying packet bytes before reuse. The reconstruction preserves that
 behavior rather than adding a new security or performance policy.
+
+## 02 — `engine/logger`
+
+| Legacy symbol or behavior | Current mapping | Status | Evidence |
+| --- | --- | --- | --- |
+| `fixedWidthColorLevelEncoder` | `fixedWidthColorLevelEncoder` | `exact` | Pads to five visible characters, then applies the original magenta/blue/yellow/red/bright-red ANSI mapping |
+| `Init(string, string) error` and `Init.func1` | `Init` and its `sync.Once` closure | `exact` | First call wins; later calls return without replacing the process logger |
+| `initLogger` encoder selection | `initLogger` | `exact` | Lowercase `json` selects production JSON; every other value selects the customized console encoder |
+| Level parsing | `parseLevel` | `exact` | Exact lowercase debug/info/warn/error mapping; unknown values select info |
+| JSON encoding | `initLogger` JSON branch | `exact` | Production keys with ISO8601 `time` replacing epoch `ts` |
+| Console encoding | `initLogger` console branch | `exact` | `[2006-01-02 15:04:05]`, 28-column caller, single-space separator, fixed color level |
+| Caller and stack options | `zap.AddCaller` and `zap.AddStacktrace(ErrorLevel)` | `exact` | Caller tests point at the external caller; errors include stack traces |
+| `Debug`, `Info`, `Warn`, `Error` | Same exported wrappers | `exact` | Each lazily initializes and applies `AddCallerSkip(1)` before writing fields |
+| `With` | `With` | `exact` | Child loggers retain structured context without the wrapper skip |
+| Logger and sugared logger globals | Atomic `global` and `globalSugar` | `equivalent-proven` | Same initialized values with race-safe lazy reads |
+| Current additive APIs | `L`, `InitFile`, option helpers | `equivalent-proven` | Direct access, file output, and zap option constructors remain available without changing legacy `Init` |
+| Production adapter and packet fields | `engine/ipsec/logging.go` | `equivalent-proven` | IPsec debug/info/warn calls now flow through this logger; binary and byte-string packet fields survive console and JSON encoding |
