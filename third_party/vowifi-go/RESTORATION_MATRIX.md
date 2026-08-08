@@ -60,3 +60,26 @@ behavior rather than adding a new security or performance policy.
 | `WithAttrs`, `WithGroup`, `dedupeNonEmpty`, `callerFromPC`, `writeWithCaller` | Same handler paths and helper symbols | `exact` | Preset fields and cloned caller chains are immutable across children; writes use a custom zap entry and core check, preserving the legacy lightweight group behavior |
 | Current additive handler option | `WithCaller` | `equivalent-proven` | Retains the current `slog.HandlerOptions{AddSource: ...}` helper without altering the legacy adapter |
 | Production logging path | IMS REGISTER, voice INVITE, netstack, SMS, and keepalive call sites | `equivalent-proven` | Existing production callers compile through the restored wrappers; `cmd/vohive` installs the configured zap-backed default slog handler before runtime startup |
+
+## 04 — `engine/crypto`
+
+| Legacy symbol or behavior | Current mapping | Status | Evidence |
+| --- | --- | --- | --- |
+| MODP group constants initialized by package `init` | `prime768` … `prime8192` in `dh_groups.go` | `exact` | All eight hexadecimal strings were recovered byte-for-byte from the v1.5.5 binary; regression tests lock the resulting historical bit lengths, including its malformed group 1/15–18 values |
+| `DiffieHellman` layout and `NewDiffieHellman` | Same exported type and constructor | `exact` | Restores public group/key/prime fields, private ECDH fields, groups 1/2/5/14–20, and the original unsupported-group error |
+| `GenerateKey`, `ComputeSharedSecret`, `PublicKeyBytes` | Same methods | `exact` | MODP and P-256/P-384 paths, left padding, peer boundary rejection, uninitialized ECDH error, and shared-key retention match the recovered implementation |
+| `Encrypter`, `AppendEncrypter`, `CipherPreparer`, `PreparedCipher` | Same interfaces | `exact` | Method sets and error-bearing append/prepare contracts match recovered type metadata |
+| AES/DES/3DES CBC transforms | `aesCBC`, `desCBC`, `tripleDESCBC`, `preparedCBC` | `exact` | Raw block-aligned encryption/decryption, key sizes, IV/block sizes, append behavior, preparation, and original Chinese errors are covered by vectors and failure tests |
+| NULL encryption transform | `nullEncryption` | `exact` | Transform ID 11, zero key/IV, four-byte block size, and append-preserving pass-through are restored |
+| AES-GCM transform and preparation | `aesGCM`, `preparedGCM` | `exact` | Restores K\|salt parsing, eight-byte explicit IV, twelve-byte nonce, sixteen-byte tag, AAD authentication, and the recovered short-IV zero-fill/long-IV truncation behavior |
+| Encryption factories | `GetEncrypter`, `GetEncrypterWithKeyLen` | `exact` | IDs 2/3/11/12/18/19/20, bit-to-byte key sizing, mandatory explicit GCM key length, and original errors match the binary; IDs 18/19/20 are locked as GCM-8/12/16 |
+| Cipher preparation and append fallback | `PrepareCipher`, `EncryptTo`, `DecryptTo`, `fallbackPreparedCipher` | `equivalent-proven` | The original encrypter selector and the current additive transform-ID selector share the same prepared implementations while preserving destination prefixes and real errors |
+| HMAC PRF registry | `PRF_HMAC_*`, `GetPRF`, `computeHMAC` | `exact` | MD5, SHA-1, SHA2-256/384/512 and their recovered key lengths/IDs match the original globals and factory |
+| AES-XCBC PRF/MAC | `xcbcPRF`, `aesXCBCPRF128`, `aesXCBCMAC` | `exact` | Restores short/long key normalization, subkey generation, padding, and truncation; RFC 3566 and RFC 4434 vectors pass |
+| `PrfPlus` | Same exported function | `exact` | Restores chained blocks, one-byte counter, exact overflow error, and the original post-block-255 failure boundary |
+| FIPS 186-2 SHA-1 PRF | `FIPS1862PRFSHA1` | `exact` | Restores right-aligned XKEY/XSEED, two SHA-1 compression outputs per block, modulo-160-bit state updates, arbitrary output lengths, and stateful generation |
+| Integrity algorithms | `IntegrityAlgorithm`, factories and concrete HMAC/XCBC/NULL types | `exact` | IDs, key/output sizes, truncation, verification, and NULL behavior match the original contract |
+| HMAC compatibility helpers | `ComputeHMAC`, `VerifyHMAC` | `exact` | Preserves full-digest computation and the recovered expected-prefix slicing semantics |
+| Random generation and key erasure | `RandomBytes`, `Wipe` | `exact` | Uses full reads from `crypto/rand`; wipe clears every byte, and SWu key derivation now invokes the shared erasure path |
+| Current additive crypto APIs | `Cipher`, `NewCipher`, `SizedPRF`, `NewPRF`, `NewIntegrity` | `equivalent-proven` | Existing stateful/padded callers remain source-compatible without narrowing the restored legacy interfaces |
+| Production encryption and derivation paths | SWu IKE/ESP derivation and protection, EAP-AKA, userspace IPsec, and XFRM mapping | `equivalent-proven` | Seal/PRF+ failures propagate through real session paths, EAP-AKA calls the restored FIPS PRF, GCM-16 uses transform 20 end-to-end, and kernel mapping recognizes all three GCM IDs |
