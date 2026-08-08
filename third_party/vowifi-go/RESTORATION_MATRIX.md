@@ -83,3 +83,25 @@ behavior rather than adding a new security or performance policy.
 | Random generation and key erasure | `RandomBytes`, `Wipe` | `exact` | Uses full reads from `crypto/rand`; wipe clears every byte, and SWu key derivation now invokes the shared erasure path |
 | Current additive crypto APIs | `Cipher`, `NewCipher`, `SizedPRF`, `NewPRF`, `NewIntegrity` | `equivalent-proven` | Existing stateful/padded callers remain source-compatible without narrowing the restored legacy interfaces |
 | Production encryption and derivation paths | SWu IKE/ESP derivation and protection, EAP-AKA, userspace IPsec, and XFRM mapping | `equivalent-proven` | Seal/PRF+ failures propagate through real session paths, EAP-AKA calls the restored FIPS PRF, GCM-16 uses transform 20 end-to-end, and kernel mapping recognizes all three GCM IDs |
+
+## 05 — `engine/eap`
+
+| Legacy symbol or behavior | Current mapping | Status | Evidence |
+| --- | --- | --- | --- |
+| EAP code, method, subtype, and SIM/AKA attribute constants | Original `Code*`, `Type*`, `Subtype*`, and `AT_*` names in `types.go` | `exact` | Restores AKA/AKA' method IDs, reauthentication subtype 13, and the complete attribute registry through AT_BIDDING; regression tests lock previously incorrect padding/client-error/KDF values |
+| `EAPPacket` layout | `EAPPacket{Code, Identifier, Type, Subtype, Data}` | `exact` | Redress projects the same four bytes followed by one byte slice; the rebuilt amd64 layout is locked at 32 bytes |
+| `Parse([]byte)` | Variadic-compatible `Parse` | `equivalent-proven` | The original one-argument call and later capacity form both compile; exact short/declared-length errors, AKA header rules, terminal behavior, trailing-buffer handling, and zero-copy data views are restored |
+| `(*EAPPacket).Encode` | Same method | `exact` | Restores four-, five-, and eight-byte header selection, big-endian declared length, reserved zeros, and direct type/subtype/data encoding |
+| `Attribute` layout and `(*Attribute).Encode` | Same type and method | `exact` | Redress projects Type/Length/Value at the original offsets; encoding updates Length, pads to four-byte words, and leaves zero padding from allocation |
+| `ParseAttributes([]byte)` | Variadic-compatible `ParseAttributes` | `equivalent-proven` | Restores map overwrite behavior, zero-copy values, silent trailing single byte, exact zero/overflow errors, and the original slice capacities while retaining the later call form |
+| IANA and 3GPP notification tables | `akaNotificationCodeTextsIANA` and `akaNotificationCodeTexts3GPP` | `exact` | Binary map initialization confirms all 6 IANA and 9 3GPP keys; exact bilingual text, source prefix, and unknown S/P-bit formatting are tested |
+| `NotificationCodeToString` | Same exported function | `exact` | Known IANA/3GPP and unknown classification output matches the recovered implementation byte-for-byte |
+| `ReauthState` source API | Same exported type | `exact` | Restores the original next-ID, counter, MK/TEK/MSK/EMSK state surface retained by the source package |
+| `FastReauthContext` layout | Same eight exported fields | `exact` | Redress projects Enabled, ReauthID, Counter, NonceS, CounterSmall, KEncr, KAut, and MK in the same order; amd64 size is locked at 136 bytes |
+| `NewFastReauthContext` | Same constructor | `exact` | Returns the original disabled zero-value context |
+| `SaveReauthData` | Dual-form dispatcher with original state update | `equivalent-proven` | Original `(string, mk, kEncr, kAut)` retains supplied slices, enables the context, and resets Counter; the later three-slice source form remains callable |
+| `CanUseReauth` | Same method | `exact` | Requires both Enabled and a non-empty ReauthID |
+| `BuildReauthResponse` | Dual-form dispatcher with original builder | `equivalent-proven` | Original nonce/counter/counter-too-small call updates state and emits AT_COUNTER, optional AT_COUNTER_TOO_SMALL, and zeroed AT_MAC exactly; the later explicit-MAC call remains supported with explicit validation |
+| Current compatibility aliases | `EAPAttribute`, `SubtypeAKA*`, and `AttrAT*` | `equivalent-proven` | Existing reconstructed callers retain their names while resolving to the corrected original values and layouts |
+| Production packet path | `engine/swu/eapaka` framing and attribute adapter | `equivalent-proven` | Every SWu EAP marshal/parse now uses the restored packet and attribute implementations while retaining ordered, strict AKA validation |
+| Production fast reauthentication path | SWu Session fast context, challenge capture, identity selection, MAC verification, response signing, and MSK update | `equivalent-proven` | Config-restored and server-issued contexts reach real IKE_AUTH handling; signed AKA/AKA' requests reject tampering, counter rollback emits AT_COUNTER_TOO_SMALL, and newly issued identities reach the persistence callback |
